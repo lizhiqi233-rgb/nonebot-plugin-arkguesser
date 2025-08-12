@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nonebot-plugin-arkguesser"
-version = "0.1.4"
+version = "0.1.5"
 description = "明日方舟猜干员游戏 - 支持多种游戏模式和题库设置"
 readme = "README.md"
 license = {text = "MIT"}

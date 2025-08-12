@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from nonebot import get_driver
 
 class Config(BaseModel):
     """插件配置类"""
@@ -14,3 +15,9 @@ class Config(BaseModel):
     
     class Config:
         extra = "ignore"
+
+# 获取插件配置实例
+def get_plugin_config() -> Config:
+    """获取插件配置实例"""
+    driver = get_driver()
+    return driver.config.arkguesser
