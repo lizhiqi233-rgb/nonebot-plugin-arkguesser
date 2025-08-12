@@ -58,12 +58,22 @@ arkstart - 开始游戏
     config=Config,
     supported_adapters={"~onebot.v11", "~onebot.v12", "~telegram", "~discord"},
 )
-game = OperatorGuesser()
+
+# 延迟创建游戏实例，避免在导入时调用配置
+_game_instance = None
+
+def get_game_instance():
+    """获取游戏实例，延迟初始化"""
+    global _game_instance
+    if _game_instance is None:
+        _game_instance = OperatorGuesser()
+    return _game_instance
+
 driver = get_driver()
 
 def is_playing() -> Rule:
     async def _checker(uninfo: Uninfo) -> bool:
-        return bool(game.get_game(uninfo))
+        return bool(get_game_instance().get_game(uninfo))
     return Rule(_checker)
 
 # 简化 Alconna 结构，使用 Option 而不是 Subcommand
@@ -99,11 +109,11 @@ async def handle_start(uninfo: Uninfo, matcher: Matcher, event: Event):
             return
         
         # 处理开始游戏
-        if game.get_game(uninfo):
+        if get_game_instance().get_game(uninfo):
             await matcher.send("🎮 游戏已在进行中！\n💬 请继续猜测或输入「结束」来结束游戏")
             return
         
-        game_data = game.start_new_game(uninfo)
+        game_data = get_game_instance().start_new_game(uninfo)
         
         # 获取连战模式设置
         user_id = str(uninfo.user.id) if uninfo.user else None
@@ -132,7 +142,7 @@ async def handle_start(uninfo: Uninfo, matcher: Matcher, event: Event):
         if continuous_enabled:
             start_msg += f" | 🔄 连战"
         
-        start_msg += f"\n🎯 {game.max_attempts}次机会 | 💬 直接输入干员名"
+        start_msg += f"\n🎯 {get_game_instance().max_attempts}次机会 | 💬 直接输入干员名"
         
         await matcher.send(start_msg)
     
@@ -160,13 +170,13 @@ async def handle_continuous_settings(uninfo: Uninfo, matcher: Matcher, message_t
             msg += f"设置来源：{info['source']}"
             
             # 添加当前连战统计信息
-            current_game = game.get_game(uninfo)
+            current_game = get_game_instance().get_game(uninfo)
             if current_game and current_game.get("continuous_mode", False):
-                continuous_count = game.get_continuous_count(uninfo)
+                continuous_count = get_game_instance().get_continuous_count(uninfo)
                 if continuous_count > 0:
                     msg += f"\n\n📊 当前连战统计\n"
                     msg += f"连战轮数：{continuous_count}轮\n"
-                    msg += f"剩余尝试：{game.max_attempts - len(current_game['guesses'])}次"
+                    msg += f"剩余尝试：{get_game_instance().max_attempts - len(current_game['guesses'])}次"
             
             await matcher.send(msg)
             return
@@ -414,10 +424,10 @@ async def handle_mode_settings(uninfo: Uninfo, matcher: Matcher, message_text: s
         await matcher.send(f"❌ 模式设置出错，请检查日志: {str(e)}")
 
 async def handle_end(uninfo: Uninfo):
-    game_data = game.get_game(uninfo)
+    game_data = get_game_instance().get_game(uninfo)
     operator = game_data["operator"]
     current_mode = game_data.get("current_mode", "大头")
-    game.end_game(uninfo)
+    get_game_instance().end_game(uninfo)
     img = await render_correct_answer(operator, current_mode)
     await UniMessage(Image(raw=img)).send()
 
@@ -427,14 +437,14 @@ async def handle_guess(uninfo: Uninfo, event: Event):
     if guess_name in ("", "结束", "arkstart"):
         if guess_name == "结束":
             # 检查是否在连战模式中
-            game_data = game.get_game(uninfo)
+            game_data = get_game_instance().get_game(uninfo)
             if game_data and game_data.get("continuous_mode", False):
-                continuous_count = game.get_continuous_count(uninfo)
+                continuous_count = get_game_instance().get_continuous_count(uninfo)
                 if continuous_count > 0:
                     # 连战模式退出
                     operator = game_data["operator"]
                     current_mode = game_data.get("current_mode", "大头")
-                    game.end_game(uninfo)
+                    get_game_instance().end_game(uninfo)
                     img = await render_correct_answer(operator, current_mode)
                     await UniMessage([
                         f"🔄 连战模式已退出\n🎯 正确答案：",
@@ -449,7 +459,7 @@ async def handle_guess(uninfo: Uninfo, event: Event):
                 await handle_end(uninfo)
         return
     # 检查游戏状态
-    game_data = game.get_game(uninfo)
+    game_data = get_game_instance().get_game(uninfo)
     if not game_data:
         return
     # 检查重复猜测
@@ -457,7 +467,7 @@ async def handle_guess(uninfo: Uninfo, event: Event):
         await UniMessage.text(f"🤔 已经猜过【{guess_name}】了，请尝试其他干员！").send()
         return
         
-    correct, guessed, comparison = game.guess(uninfo, guess_name)
+    correct, guessed, comparison = get_game_instance().guess(uninfo, guess_name)
     
     if correct:
         # 检查连战模式
@@ -466,13 +476,13 @@ async def handle_guess(uninfo: Uninfo, event: Event):
         if continuous_mode:
             # 连战模式：自动开始新游戏
             # 更新连战计数
-            continuous_count = game.update_continuous_count(uninfo)
+            continuous_count = get_game_instance().update_continuous_count(uninfo)
             
             # 结束当前游戏
-            game.end_game(uninfo)
+            get_game_instance().end_game(uninfo)
             
             # 开始新游戏
-            new_game = game.start_new_game(uninfo)
+            new_game = get_game_instance().start_new_game(uninfo)
             
             # 显示答案并提示连战模式
             current_mode = game_data.get("current_mode", "大头")
@@ -495,7 +505,7 @@ async def handle_guess(uninfo: Uninfo, event: Event):
             ]).send()
         else:
             # 普通模式：正常结束
-            game.end_game(uninfo)
+            get_game_instance().end_game(uninfo)
             current_mode = game_data.get("current_mode", "大头")
             img = await render_correct_answer(guessed, current_mode)
             await UniMessage([
@@ -505,19 +515,19 @@ async def handle_guess(uninfo: Uninfo, event: Event):
         return
     
     if not guessed:
-        similar = game.find_similar_operators(guess_name)
+        similar = get_game_instance().find_similar_operators(guess_name)
         if not similar:
             return
         err_msg = f"❓ 未找到干员【{guess_name}】！\n💡 尝试以下相似结果：" + "、".join(similar)
         await UniMessage.text(err_msg).send()
         return
 
-    attempts_left = game.max_attempts - len(game_data["guesses"])
+    attempts_left = get_game_instance().max_attempts - len(game_data["guesses"])
     # 检查尝试次数
     if attempts_left <= 0:
         operator = game_data["operator"]
         current_mode = game_data.get("current_mode", "大头")
-        game.end_game(uninfo)
+        get_game_instance().end_game(uninfo)
         img = await render_correct_answer(operator, current_mode)
         await UniMessage([
             "😅 尝试次数已用尽！\n🎯 正确答案：",
@@ -529,8 +539,8 @@ async def handle_guess(uninfo: Uninfo, event: Event):
     img = await render_guess_result(guessed, comparison, attempts_left, current_mode)
     
     # 添加连战模式进度显示
-    if game.is_continuous_mode(uninfo):
-        continuous_count = game.get_continuous_count(uninfo)
+    if get_game_instance().is_continuous_mode(uninfo):
+        continuous_count = get_game_instance().get_continuous_count(uninfo)
         if continuous_count > 0:
             # 在图片下方添加连战进度提示
             progress_msg = f"\n🔄 连战进度：第{continuous_count}轮 | 剩余尝试：{attempts_left}次"
