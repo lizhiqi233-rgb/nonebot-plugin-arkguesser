@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from nonebot import get_driver
 
-class Config(BaseModel):
+class ArkGuesserConfig(BaseModel):
     """插件配置类"""
     
     # 最大尝试次数
@@ -17,7 +17,16 @@ class Config(BaseModel):
         extra = "ignore"
 
 # 获取插件配置实例
-def get_plugin_config() -> Config:
+def get_plugin_config() -> ArkGuesserConfig:
     """获取插件配置实例"""
-    driver = get_driver()
-    return driver.config.arkguesser
+    try:
+        driver = get_driver()
+        # 尝试从driver.config获取配置
+        if hasattr(driver.config, 'arkguesser'):
+            return driver.config.arkguesser
+        else:
+            # 如果没有配置，返回默认配置
+            return ArkGuesserConfig()
+    except Exception:
+        # 如果出现任何错误，返回默认配置
+        return ArkGuesserConfig()

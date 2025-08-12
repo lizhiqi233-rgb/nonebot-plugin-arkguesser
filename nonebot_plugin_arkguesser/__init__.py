@@ -12,7 +12,7 @@ require("nonebot_plugin_localstore")
 from nonebot_plugin_uninfo import Uninfo
 from nonebot_plugin_alconna import UniMessage, Image, on_alconna, Args
 from arclet.alconna import Alconna, Option
-from .config import Config
+from .config import ArkGuesserConfig
 
 from .game import OperatorGuesser
 from .render import render_guess_result, render_correct_answer
@@ -55,7 +55,7 @@ arkstart - 开始游戏
 /arkstart 连战 重置 - 重置为默认连战模式设置""",
     type="application",
     homepage="https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser",
-    config=Config,
+    config=ArkGuesserConfig,
     supported_adapters={"~onebot.v11", "~onebot.v12", "~telegram", "~discord"},
 )
 
