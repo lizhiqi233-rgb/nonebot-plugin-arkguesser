@@ -1,0 +1,5 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include nonebot_plugin_arkguesser/resources *
+recursive-include nonebot_plugin_arkguesser *.py

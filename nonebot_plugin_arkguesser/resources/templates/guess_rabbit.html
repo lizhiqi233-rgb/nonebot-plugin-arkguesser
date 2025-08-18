@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        /* 基础布局样式 */
+        body {
+            margin: 0;
+            padding: 4px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            width: {{ width }}px;
+            height: {{ height }}px;
+            box-sizing: border-box;
+        }
+        
+        .game-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            background-color: #ffffff;
+            border-radius: 4px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        /* 图片区域样式 - 使用templates2的图片显示效果 */
+        .image-section {
+            flex: 0 0 180px;
+            height: 100%; /* 改为100%高度，自适应容器 */
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center; /* 垂直居中 */
+            justify-content: center; /* 水平居中 */
+            position: relative;
+            padding: 8px; /* 添加内边距，避免图片贴边 */
+            overflow: hidden;
+        }
+        
+        .operator-image {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto; /* 改为auto，保持图片比例 */
+            height: auto; /* 改为auto，保持图片比例 */
+            object-fit: contain; /* 改为contain，确保图片完整显示 */
+            object-position: center; /* 居中显示 */
+            border-radius: 4px; /* 添加圆角 */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* 添加阴影效果 */
+        }
+        
+        /* 信息区域样式 */
+        .info-section {
+            flex: 1;
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            background-color: #fafafa;
+        }
+        
+        /* 标题样式 */
+        .operator-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 4px;
+            text-align: center;
+            padding: 4px 6px;
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            border-radius: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* 统计表格样式 */
+        .stats-table {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1px 2px;
+            overflow-y: auto;
+            max-height: calc(100% - 60px);
+            align-items: start;
+        }
+        
+        .stat-row {
+            display: flex;
+            padding: 2px 3px;
+            border-radius: 2px;
+            border: 1px solid #e0e0e0;
+            min-height: 28px;
+            align-items: center;
+        }
+        
+        .stat-label {
+            flex: 0 0 50px;
+            font-weight: bold;
+            color: #555;
+            font-size: 18px;
+            white-space: nowrap;
+        }
+        
+        .stat-value {
+            flex: 1;
+            text-align: right;
+            font-size: 18px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            line-height: 1.3;
+        }
+        
+        /* 匹配状态样式 */
+        .match-row {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        .mismatch-row {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            border-color: #f44336;
+            color: #c62828;
+        }
+        
+        /* 星级样式 */
+        .star {
+            color: #ffc107;
+            text-shadow: 0 0 2px rgba(0,0,0,0.3);
+        }
+        
+        /* 星级比较提示样式 */
+        .rarity-higher {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-color: #2196f3;
+            color: #1976d2;
+        }
+        
+        .rarity-lower {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            border-color: #f44336;
+            color: #c62828;
+        }
+        
+        .rarity-same {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        .rarity-correct {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        /* 数值比较样式 */
+        .value-higher {
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-color: #2196f3;
+            color: #1976d2;
+        }
+        
+        .value-lower {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            border-color: #f44336;
+            color: #c62828;
+        }
+        
+        .value-same {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        .value-within-20-percent {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-color: #ff9800;
+            color: #e65100;
+        }
+        
+        /* 标签样式 */
+        .tag {
+            display: inline-block;
+            padding: 2px 4px;
+            margin: 1px;
+            background-color: #f5f5f5; /* 默认灰白色 */
+            color: #666;
+            border-radius: 3px;
+            font-size: 16px;
+            white-space: nowrap;
+        }
+        
+        /* 标签行跨列样式 */
+        .stat-row.tags-row {
+            grid-column: 1 / -1;
+        }
+        
+        /* 标签容器样式 */
+        .tags-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            justify-content: flex-end;
+        }
+        
+        /* 标签行整体底色样式 */
+        .tags-exact_match {
+            background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        .tags-partial_match {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border-color: #ff9800;
+            color: #e65100;
+        }
+        
+        .tags-no_match {
+            background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+            border-color: #f44336;
+            color: #c62828;
+        }
+        
+        /* 单个标签匹配状态样式 */
+        .tag-matched {
+            background-color: #4caf50; /* 正确时绿色高亮 */
+            color: white;
+            border: 1px solid #2e7d32;
+        }
+        
+        /* 尝试次数信息 */
+        .attempts-info {
+            font-size: 19px;
+            color: #666;
+            text-align: center;
+            padding: 4px;
+            background-color: #f0f0f0;
+            border-radius: 3px;
+            margin-top: 4px;
+        }
+        
+        /* 全对状态 */
+        .all-correct {
+            background-color: #4caf50;
+            color: white;
+        }
+        
+        .all-correct .stat-value::after {
+            content: " ✓";
+            color: #4caf50;
+            font-weight: bold;
+        }
+        
+        /* 箭头指示器 */
+        .arrow-up::after {
+            content: " ↑";
+            color: #ff9800;
+            font-weight: bold;
+        }
+        
+        .arrow-down::after {
+            content: " ↓";
+            color: #ff9800;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container {% if all_correct %}all-correct{% endif %}">
+        <!-- 左侧图片区域 -->
+        <div class="image-section">
+            <img src="{{ illustration }}" alt="{{ operator_name }}" class="operator-image">
+        </div>
+        
+        <!-- 右侧信息区域 -->
+        <div class="info-section">
+            <div class="operator-title">
+                {{ operator_name }}
+            </div>
+            
+            <div class="stats-table">
+                <!-- 第一列 -->
+                <div class="stat-row {% if attack_comparison.correct %}match-row{% elif attack_comparison.within_20_percent %}{% if attack_comparison.direction == 'up' %}value-within-20-percent arrow-up{% elif attack_comparison.direction == 'down' %}value-within-20-percent arrow-down{% else %}value-within-20-percent{% endif %}{% elif attack_comparison.direction == 'up' %}value-lower{% else %}value-higher{% endif %}">
+                    <div class="stat-label">攻击</div>
+                    <div class="stat-value">{{ attack }}</div>
+                </div>
+                
+                <div class="stat-row {% if defense_comparison.correct %}match-row{% elif defense_comparison.within_20_percent %}{% if defense_comparison.direction == 'up' %}value-within-20-percent arrow-up{% elif defense_comparison.direction == 'down' %}value-within-20-percent arrow-down{% else %}value-within-20-percent{% endif %}{% elif defense_comparison.direction == 'up' %}value-lower{% else %}value-higher{% endif %}">
+                    <div class="stat-label">防御</div>
+                    <div class="stat-value">{{ defense }}</div>
+                </div>
+                
+                <div class="stat-row {% if hp_comparison.correct %}match-row{% elif hp_comparison.within_20_percent %}{% if hp_comparison.direction == 'up' %}value-within-20-percent arrow-up{% elif hp_comparison.direction == 'down' %}value-within-20-percent arrow-down{% else %}value-within-20-percent{% endif %}{% elif hp_comparison.direction == 'up' %}value-lower{% else %}value-higher{% endif %}">
+                    <div class="stat-label">生命值</div>
+                    <div class="stat-value">{{ hp }}</div>
+                </div>
+                
+                <div class="stat-row {% if res_comparison.correct %}match-row{% elif res_comparison.within_20_percent %}{% if res_comparison.direction == 'up' %}value-within-20-percent arrow-up{% elif res_comparison.direction == 'down' %}value-within-20-percent arrow-down{% else %}value-within-20-percent{% endif %}{% elif res_comparison.direction == 'up' %}value-lower{% else %}value-higher{% endif %}">
+                    <div class="stat-label">法抗</div>
+                    <div class="stat-value">{{ res }}</div>
+                </div>
+                
+                <!-- 第二列 -->
+                <div class="stat-row {{ 'match-row' if gender_correct else 'mismatch-row' }}">
+                    <div class="stat-label">性别</div>
+                    <div class="stat-value">{{ gender }}</div>
+                </div>
+                
+                <div class="stat-row {% if rarity_comparison.correct %}rarity-correct{% elif rarity_comparison.direction == 'up' %}rarity-lower{% else %}rarity-higher{% endif %}">
+                    <div class="stat-label">星级</div>
+                    <div class="stat-value">{{ rarity }}星</div>
+                </div>
+                
+                <div class="stat-row {% if interval_comparison.correct %}match-row{% elif interval_comparison.within_20_percent %}{% if interval_comparison.direction == 'up' %}value-within-20-percent arrow-up{% elif interval_comparison.direction == 'down' %}value-within-20-percent arrow-down{% else %}value-within-20-percent{% endif %}{% elif interval_comparison.direction == 'up' %}value-lower{% else %}value-higher{% endif %}">
+                    <div class="stat-label">攻击间隔</div>
+                    <div class="stat-value">{{ interval }}</div>
+                </div>
+                
+                <div class="stat-row {% if cost_comparison.correct %}match-row{% elif cost_comparison.within_20_percent %}{% if cost_comparison.direction == 'up' %}value-within-20-percent arrow-up{% elif cost_comparison.direction == 'down' %}value-within-20-percent arrow-down{% else %}value-within-20-percent{% endif %}{% elif cost_comparison.direction == 'up' %}value-lower{% else %}value-higher{% endif %}">
+                    <div class="stat-label">初始费用</div>
+                    <div class="stat-value">{{ cost }}</div>
+                </div>
+                
+                {% if tags %}
+                <div class="stat-row tags-{{ tags_comparison.status if tags_comparison else 'no_match' }} tags-row">
+                    <div class="stat-label">标签</div>
+                    <div class="stat-value">
+                        <div class="tags-container">
+                            {% for tag in tags %}
+                                {% if tags_comparison and tag in tags_comparison.matched_tags %}
+                                    <span class="tag tag-matched">{{ tag }}</span>
+                                {% else %}
+                                    <span class="tag">{{ tag }}</span>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="attempts-info">
+                剩余尝试次数: {{ attempts_left }}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
