@@ -1,0 +1,92 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nonebot-plugin-arkguesser"
+dynamic = ["version"]
+description = "明日方舟猜干员游戏 - 支持多种游戏模式和题库设置"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "lizhiqi233-rgb", email = "lizhiqi233-rgb@example.com"}
+]
+keywords = ["nonebot", "nonebot2", "plugin", "arknights", "game", "guess"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Communications :: Chat",
+    "Topic :: Games/Entertainment",
+]
+dependencies = [
+    "nonebot2>=2.4.2",
+    "nonebot-plugin-alconna>=0.59.3",
+    "nonebot-plugin-uninfo>=0.9.0",
+    "nonebot-plugin-htmlrender>=0.6.6",
+    "nonebot-plugin-localstore>=0.7.4",
+    "pypinyin>=0.55.0",
+    "pydantic>=2.11.7",
+    "httpx>=0.24.0",
+    "Pillow>=9.0.0",
+    
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser"
+Repository = "https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser"
+Documentation = "https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser#readme"
+Issues = "https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser/issues"
+Discussions = "https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser/discussions"
+
+[project.scripts]
+arkguesser = "nonebot_plugin_arkguesser:main"
+
+[tool.hatch.version]
+path = "nonebot_plugin_arkguesser/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nonebot_plugin_arkguesser"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/nonebot_plugin_arkguesser",
+    "/README.md",
+    "/LICENSE",
+    "/MANIFEST.in",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=nonebot_plugin_arkguesser",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
