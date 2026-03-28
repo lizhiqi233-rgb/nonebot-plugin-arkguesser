@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% set panel_w = width | default(540) | int %}
+    {% set panel_h = height | default(540) | int %}
+    {#
+      左侧整身立绘 final_char_art_e2_url：
+      char_art_elite_level：1=精一 _1.png（星级<4），2=精二 _2.png（星级≥4）。
+      1) char_arts_base_uri + char_operator_id → .../char_arts/{id}_{1|2}.png（本地）
+      2) html_asset_base_uri + char_operator_id → {char_arts_rel_dir}/{id}_{1|2}.png + <base>
+      3) char_art_e2_url 非空 → 显式覆盖（一般为 charArt CDN）
+      4) 仅 char_operator_id → torappu .../char_arts/{id}_{1|2}.png
+    #}
+    {% set _elite_lv = char_art_elite_level | default(2) | int %}
+    {% set _op_id = char_operator_id | default(operator_char_id | default('', true), true) | trim %}
+    {% set _explicit = char_art_e2_url | default('', true) | trim %}
+    {% set _dir_uri = char_arts_base_uri | default(char_arts_dir_uri | default('', true), true) | trim %}
+    {% set _asset_base = html_asset_base_uri | default('', true) | trim %}
+    {% set _rel_dir = (char_arts_rel_dir | default('char_arts', true)) | trim | trim('/') %}
+    {% if _dir_uri and _op_id %}
+      {% set final_char_art_e2_url = (_dir_uri ~ '').rstrip('/') ~ '/' ~ _op_id ~ '_' ~ _elite_lv ~ '.png' %}
+    {% elif _asset_base and _op_id %}
+      {% set final_char_art_e2_url = _rel_dir ~ '/' ~ _op_id ~ '_' ~ _elite_lv ~ '.png' %}
+    {% elif _explicit %}
+      {% set final_char_art_e2_url = _explicit %}
+    {% elif _op_id %}
+      {% set final_char_art_e2_url = 'https://torappu.prts.wiki/assets/char_arts/' ~ _op_id ~ '_' ~ _elite_lv ~ '.png' %}
+    {% else %}
+      {% set final_char_art_e2_url = '' %}
+    {% endif %}
+    {% if _asset_base and _op_id and not (_dir_uri and _op_id) %}
+    <base href="{{ (_asset_base ~ '').rstrip('/') }}/" />
+    {% endif %}
+    <link rel="stylesheet" href="{{ new_theme_css_uri | default('new_theme.css') }}" />
+    <style>
+      /* 与 game_tools.render 传入的 width/height 一致，放大时覆盖 new_theme.css 中 540px */
+      :root {
+        --panel-w: {{ panel_w }}px;
+        --panel-h: {{ panel_h }}px;
+      }
+    </style>
+    {% set _font_uri = panel_font_ttf_uri | default('', true) | trim %}
+    {% if _font_uri %}
+    <style>
+      /* 必须用绝对 file://，否则 Playwright setContent 时 CSS 内相对 url(../fonts/) 无法解析到 TTF */
+      @font-face {
+        font-family: "HarmonyOS Sans Medium";
+        src: url("{{ _font_uri }}") format("truetype");
+        font-weight: normal;
+        font-style: normal;
+        font-display: block;
+      }
+    </style>
+    {% endif %}
+    <!--
+      颜色等通用配置见 resources/templates/new_theme.css（:root 变量）。
+      SVG 中 fill/stroke 使用 new_theme.css 里定义的 CSS 变量 var(--xxx)。
+      html_to_pic 使用 set_content 时，请传入 file:// 形式的 new_theme_css_uri 才能加载外链 CSS。
+    -->
+  </head>
+  <body>
+    <!--
+      Self-contained 540x540 panel:
+      - Right side is conceptually 360x360 split into 7 equal rows.
+      - Each row's top/bottom edges are slanted: left side is lower, right side is higher.
+      - Guaranteed: first row right-top corner and last row left-bottom corner stay within the 540x540 canvas.
+    -->
+    <div role="img" aria-label="ArkGuesser panel" style="width:{{ panel_w }}px;height:{{ panel_h }}px;">
+      <svg
+        class="ark-panel__svg"
+        viewBox="0 0 540 540"
+        width="{{ panel_w }}"
+        height="{{ panel_h }}"
+        preserveAspectRatio="none"
+        style="display:block;font-family:var(--panel-font-family);"
+      >
+        <defs>
+          <!-- 信息子模块：投影朝画布左、下侧 -->
+          <filter
+            id="info-module-shadow"
+            x="-80%"
+            y="-80%"
+            width="260%"
+            height="260%"
+            color-interpolation-filters="sRGB"
+          >
+            <feDropShadow
+              dx="-5"
+              dy="6"
+              stdDeviation="3.2"
+              flood-color="#000000"
+              flood-opacity="0.2"
+              result="sh"
+            />
+            <feMerge>
+              <feMergeNode in="sh" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <!-- 左侧名称栏：左右各约 30% 宽度渐变，中间段纯白 -->
+          <linearGradient id="name-bar-fade" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0" />
+            <stop offset="30%" stop-color="#ffffff" stop-opacity="1" />
+            <stop offset="70%" stop-color="#ffffff" stop-opacity="1" />
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+          </linearGradient>
+          <!-- 精二立绘：裁切到面板内；统一 scale(512→540)，见 new_theme.css 说明 -->
+          <clipPath id="clip-char-e2-panel" clipPathUnits="userSpaceOnUse">
+            <rect x="0" y="0" width="540" height="540" />
+          </clipPath>
+        </defs>
+        <!-- 底图：白色底 + AVG 背景图（铺满裁切，无模糊） -->
+        <rect x="0" y="0" width="540" height="540" fill="var(--bg-panel)" />
+        {% set panel_bg_url = bg_image_url | default('https://torappu.prts.wiki/assets/avg/background/42_g12_snowfield.png') %}
+        {% if panel_bg_url %}
+        <image
+          href="{{ panel_bg_url }}"
+          x="0"
+          y="0"
+          width="540"
+          height="540"
+          preserveAspectRatio="xMidYMid slice"
+        />
+        {% endif %}
+
+        {#
+          左侧整身立绘：渲染层传入 char_e2_inner_transform。
+          - 六星：有 char_e2_head_align.csv 时头部锚到左上象限；无 CSV 则仅 scale(540/512) 全幅居中。
+          - 非六星（含 1～3 星精一立绘）：左侧半区居中（translate(-vp/4,0)）。
+        #}
+        {% if final_char_art_e2_url %}
+        {% set char_art_prts_vp = 512 %}
+        {% set char_art_panel = 540 %}
+        {% set char_art_k = char_art_panel / char_art_prts_vp %}
+        {% set _e2_tf = char_e2_inner_transform | default('', true) | trim %}
+        <g clip-path="url(#clip-char-e2-panel)">
+          <g transform="scale({{ char_art_k }})">
+            {% if _e2_tf %}
+            <g transform="{{ _e2_tf }}">
+              <image
+                href="{{ final_char_art_e2_url }}"
+                x="0"
+                y="0"
+                width="{{ char_art_prts_vp }}"
+                height="{{ char_art_prts_vp }}"
+                preserveAspectRatio="xMidYMid slice"
+              />
+            </g>
+            {% else %}
+            <image
+              href="{{ final_char_art_e2_url }}"
+              x="0"
+              y="0"
+              width="{{ char_art_prts_vp }}"
+              height="{{ char_art_prts_vp }}"
+              preserveAspectRatio="xMidYMid slice"
+            />
+            {% endif %}
+          </g>
+        </g>
+        {% endif %}
+
+        <!-- 等腰梯形外框：左右为竖边，左短右长；上下互为关于中线的镜像（整体相对画布右缘左移 panel_offset_x） -->
+        {% set panel_offset_x = 10 %}
+        {% set x1 = 540 - panel_offset_x %}
+        {% set y_mid = 270 %}
+        {% set right_h = 432 %}
+        {% set panel_w = right_h * 9 / 16 %}
+        {% set x0 = x1 - panel_w %}
+        {% set left_h = right_h * 0.90 %}
+        {% set y_rt = y_mid - right_h / 2 %}
+        {% set y_rb = y_mid + right_h / 2 %}
+        {% set y_lt = y_mid - left_h / 2 %}
+        {% set y_lb = y_mid + left_h / 2 %}
+
+        <!-- 行/列分布：前3行双列，其余行单列。按百分比分配 -->
+        {% set row_gap_ratio = 0.018 %}
+        {% set row_ratio = (1 - row_gap_ratio * 6) / 7 %}
+        {% set col_gap_ratio = 0.06 %}
+        {% set col_gap_px_top3 = 20 %}
+        {% set base_left_ratio = (1 - col_gap_ratio) / 2 %}
+        {% set second_col_shift_ratio = 0.10 %}
+
+        {# 猜测阶段且剩余次数≤3：左侧原为灰色的提示条改为红色（仅色条，不改文字） #}
+        {% set _al_panel = attempts_left | default(999) | int %}
+        {% set _reveal_panel = reveal_all | default(false) %}
+        {% set _neutral_bar_fill = 'var(--bar-fill-mismatch)' if (not _reveal_panel) and (_al_panel <= 3) else 'var(--bar-fill-neutral)' %}
+
+        {% for i in range(0, 7) %}
+          {# 左侧 6px 判定条：职业/子职业、星级、种族、出身地、势力、标签等对错配色 #}
+          {% set _reveal = reveal_all | default(false) %}
+          {% set _pc = profession_correct | default(false) %}
+          {% set _spc = subProfession_correct | default(false) %}
+          {% set _rc = race_correct | default(false) %}
+          {% set _oc = origin_correct | default(false) %}
+          {% set _posc = position_correct | default(false) %}
+          {% set _gc = gender_correct | default(false) %}
+          {% set _rarity_class = rarity_class | default('same') %}
+          {% set _fc = faction_comparison | default({}) %}
+          {% set _fstat = _fc.status | default('no_match') %}
+          {% set _tcmp = tags_comparison | default({}) %}
+          {% set _tstat = _tcmp.status | default('no_match') %}
+          {% if _reveal %}
+            {% set bar_L = 'var(--bar-fill-match)' %}
+            {% set bar_R = 'var(--bar-fill-match)' %}
+            {% set bar_S = 'var(--bar-fill-match)' %}
+          {% elif i == 0 %}
+            {% set bar_L = 'var(--bar-fill-match)' if _pc else 'var(--bar-fill-mismatch)' %}
+            {% set bar_R = 'var(--bar-fill-match)' if _spc else 'var(--bar-fill-mismatch)' %}
+          {% elif i == 1 %}
+            {% if _rarity_class == 'same' %}
+              {% set bar_L = 'var(--bar-fill-rarity-same)' %}
+            {% elif _rarity_class == 'higher' %}
+              {% set bar_L = 'var(--bar-fill-rarity-higher)' %}
+            {% else %}
+              {% set bar_L = 'var(--bar-fill-rarity-lower)' %}
+            {% endif %}
+            {% set bar_R = 'var(--bar-fill-match)' if _rc else 'var(--bar-fill-mismatch)' %}
+          {% elif i == 2 %}
+            {% set bar_L = 'var(--bar-fill-match)' if _posc else 'var(--bar-fill-mismatch)' %}
+            {% set bar_R = 'var(--bar-fill-match)' if _gc else 'var(--bar-fill-mismatch)' %}
+          {% elif i == 3 %}
+            {% set bar_S = 'var(--bar-fill-match)' if _oc else 'var(--bar-fill-mismatch)' %}
+          {% elif i == 4 %}
+            {% if _fstat == 'exact_match' %}
+              {% set bar_S = 'var(--bar-fill-match)' %}
+            {% elif _fstat == 'parent_match' %}
+              {% set bar_S = 'var(--bar-fill-warning)' %}
+            {% elif _fstat == 'neutral' %}
+              {% set bar_S = _neutral_bar_fill %}
+            {% else %}
+              {% set bar_S = 'var(--bar-fill-mismatch)' %}
+            {% endif %}
+          {% elif i == 5 %}
+            {% if _tstat == 'exact_match' %}
+              {% set bar_S = 'var(--bar-fill-match)' %}
+            {% elif _tstat == 'partial_match' %}
+              {% set bar_S = 'var(--bar-fill-warning)' %}
+            {% else %}
+              {% set bar_S = 'var(--bar-fill-mismatch)' %}
+            {% endif %}
+          {% else %}
+            {% set bar_S = _neutral_bar_fill %}
+          {% endif %}
+
+          {% set t0 = i * (row_ratio + row_gap_ratio) %}
+          {% set t1 = t0 + row_ratio %}
+
+          {% set yL0 = y_lt + (y_lb - y_lt) * t0 %}
+          {% set yL1 = y_lt + (y_lb - y_lt) * t1 %}
+          {% set yR0 = y_rt + (y_rb - y_rt) * t0 %}
+          {% set yR1 = y_rt + (y_rb - y_rt) * t1 %}
+
+          {% if i % 2 == 0 %}
+            {% set fill_color = 'var(--row-fill)' %}
+          {% else %}
+            {% set fill_color = 'var(--row-fill)' %}
+          {% endif %}
+
+          {% set shift_px = 0 %}
+          {% if i % 2 == 0 %}
+            {% set shift_px = (x1 - x0) * second_col_shift_ratio * base_left_ratio %}
+          {% endif %}
+          {% set x0s = x0 - shift_px %}
+          {% set x1s = x1 - shift_px %}
+          {% if i < 3 %}
+            {# 第1/2/3行：顶/底仍在原斜线上插值；xm 用二分使左列面积 = 总行面积 42.2%（42.2：57.8） #}
+            {% set w_row = x1s - x0s %}
+            {% set cross_tot = x0s * yR0 - x1s * yL0 + x1s * yR1 - x1s * yR0 + x1s * yL1 - x0s * yR1 + x0s * yL0 - x0s * yL1 %}
+            {% set A_total = (cross_tot | abs) / 2 %}
+            {% set target_L = A_total * 0.422 %}
+            {% set ns = namespace(lo=x0s, hi=x1s) %}
+            {% for _ in range(32) %}
+              {% set mid = (ns.lo + ns.hi) / 2 %}
+              {% set yTopT = yL0 + (mid - x0s) / w_row * (yR0 - yL0) %}
+              {% set yBotT = yL1 + (mid - x0s) / w_row * (yR1 - yL1) %}
+              {% set crossL = x0s * (yTopT - yBotT + yL0 - yL1) + mid * (-yL0 + yBotT - yTopT + yL1) %}
+              {% set areaL = (crossL | abs) / 2 %}
+              {% if areaL < target_L %}
+                {% set ns.lo = mid %}
+              {% else %}
+                {% set ns.hi = mid %}
+              {% endif %}
+            {% endfor %}
+            {% set xm = (ns.lo + ns.hi) / 2 %}
+            {% set yTopMid = yL0 + (xm - x0s) / w_row * (yR0 - yL0) %}
+            {% set yBotMid = yL1 + (xm - x0s) / w_row * (yR1 - yL1) %}
+            {# 列间距 10px：从第二列左侧让出，右列从 xm+10 起画 #}
+            {% set col_gap_px = 10 %}
+            {% set xR0 = [xm + col_gap_px, x1s - 1] | min %}
+            {% set yTopR0 = yL0 + (xR0 - x0s) / w_row * (yR0 - yL0) %}
+            {% set yBotR0 = yL1 + (xR0 - x0s) / w_row * (yR1 - yL1) %}
+            <polygon
+              points="{{ x0s }},{{ yL0 }} {{ xm }},{{ yTopMid }} {{ xm }},{{ yBotMid }} {{ x0s }},{{ yL1 }}"
+              fill="{{ fill_color }}"
+              stroke="var(--row-stroke)"
+              stroke-width="2"
+              filter="url(#info-module-shadow)"
+            />
+
+            {# 左侧 6px 判定条：与该四边形左边界重合；上/下边按原斜边插值 #}
+            {% set bar_w = 6 %}
+            {% set xBarR = [x0s + bar_w, xm - 1] | min %}
+            {% set yTopBarR = yL0 + (xBarR - x0s) / (xm - x0s) * (yTopMid - yL0) %}
+            {% set yBotBarR = yL1 + (xBarR - x0s) / (xm - x0s) * (yBotMid - yL1) %}
+            <polygon
+              points="{{ x0s }},{{ yL0 }} {{ xBarR }},{{ yTopBarR }} {{ xBarR }},{{ yBotBarR }} {{ x0s }},{{ yL1 }}"
+              fill="{{ bar_L }}"
+              stroke="none"
+              filter="url(#info-module-shadow)"
+            />
+
+            {# 左列文字：对文字做 y-shift 的仿射剪切，保证“上下边”随顶/底斜率变化，左右边保持垂直 #}
+            {% set wL = xm - x0s %}
+            {% set hL = yL1 - yL0 %}
+            {% set kL = (yTopMid - yL0) / wL %}
+            {# clip-path 与 transform 不可写在同一 <g>：否则裁剪会随矩阵一起变，绝对坐标的 clip 会把内容裁没 #}
+            <clipPath id="clip-{{ i }}-L" clipPathUnits="userSpaceOnUse">
+              <polygon
+                points="{{ x0s }},{{ yL0 }} {{ xm }},{{ yTopMid }} {{ xm }},{{ yBotMid }} {{ x0s }},{{ yL1 }}"
+              />
+            </clipPath>
+            <g clip-path="url(#clip-{{ i }}-L)">
+              <g transform="matrix(1 {{ kL }} 0 1 {{ x0s }} {{ yL0 }})">
+                <text
+                  font-size="15"
+                  fill="var(--label-text-color)"
+                  text-anchor="start"
+                  dominant-baseline="middle"
+                  x="10"
+                  y="{{ hL * 0.83 }}"
+                >
+                  {% if i == 0 %}职业{% elif i == 1 %}星级{% else %}位置{% endif %}
+                </text>
+                <text
+                  font-size="20"
+                  fill="var(--text-color)"
+                  text-anchor="start"
+                  dominant-baseline="middle"
+                  x="10"
+                  y="{{ hL * 0.33 }}"
+                >
+                  {% if i == 0 %}
+                    {{ profession }}
+                  {% elif i == 1 %}
+                    {{ rarity }}星
+                  {% else %}
+                    {{ position }}
+                  {% endif %}
+                </text>
+              </g>
+            </g>
+
+            <polygon
+              points="{{ xR0 }},{{ yTopR0 }} {{ x1s }},{{ yR0 }} {{ x1s }},{{ yR1 }} {{ xR0 }},{{ yBotR0 }}"
+              fill="{{ fill_color }}"
+              stroke="var(--row-stroke)"
+              stroke-width="2"
+              filter="url(#info-module-shadow)"
+            />
+
+            {# 左侧 6px 判定条：与右列四边形的“左边”xR0/yTopR0-yBotR0 重合 #}
+            {% set bar_w = 6 %}
+            {% set xBarR = [xR0 + bar_w, x1s - 1] | min %}
+            {% set yTopBarR = yTopR0 + (xBarR - xR0) / (x1s - xR0) * (yR0 - yTopR0) %}
+            {% set yBotBarR = yBotR0 + (xBarR - xR0) / (x1s - xR0) * (yR1 - yBotR0) %}
+            <polygon
+              points="{{ xR0 }},{{ yTopR0 }} {{ xBarR }},{{ yTopBarR }} {{ xBarR }},{{ yBotBarR }} {{ xR0 }},{{ yBotR0 }}"
+              fill="{{ bar_R }}"
+              stroke="none"
+              filter="url(#info-module-shadow)"
+            />
+
+            {# 右列文字：同理用剪切变形到对应梯形范围 #}
+            {% set wR = x1s - xR0 %}
+            {% set hR = yBotR0 - yTopR0 %}
+            {% set kR = (yR0 - yTopR0) / wR %}
+            <clipPath id="clip-{{ i }}-R" clipPathUnits="userSpaceOnUse">
+              <polygon
+                points="{{ xR0 }},{{ yTopR0 }} {{ x1s }},{{ yR0 }} {{ x1s }},{{ yR1 }} {{ xR0 }},{{ yBotR0 }}"
+              />
+            </clipPath>
+            <g clip-path="url(#clip-{{ i }}-R)">
+              <g transform="matrix(1 {{ kR }} 0 1 {{ xR0 }} {{ yTopR0 }})">
+                {% if i == 0 %}
+                  {% set _cell_txt = subProfession | default('', true) %}
+                {% elif i == 1 %}
+                  {% set _cell_txt = race | default('', true) %}
+                {% else %}
+                  {% set _cell_txt = gender | default('', true) %}
+                {% endif %}
+                {% set _cell_n = _cell_txt | length %}
+                {# 长串（如「罗德岛-精英干员」）略缩小字号，避免梯形区内左右被裁切显得过窄 #}
+                {% if _cell_n > 12 %}
+                  {% set _cell_fs = 15 %}
+                {% elif _cell_n > 8 %}
+                  {% set _cell_fs = 17 %}
+                {% else %}
+                  {% set _cell_fs = 20 %}
+                {% endif %}
+                <text
+                  font-size="15"
+                  fill="var(--label-text-color)"
+                  text-anchor="start"
+                  dominant-baseline="middle"
+                  x="10"
+                  y="{{ hR * 0.83 }}"
+                >
+                  {% if i == 0 %}子职业{% elif i == 1 %}种族{% else %}性别{% endif %}
+                </text>
+                <text
+                  font-size="{{ _cell_fs }}"
+                  fill="var(--text-color)"
+                  text-anchor="start"
+                  dominant-baseline="middle"
+                  x="10"
+                  y="{{ hR * 0.33 }}"
+                >
+                  {% if i == 0 %}
+                    {{ subProfession }}
+                  {% elif i == 1 %}
+                    {{ race }}
+                  {% else %}
+                    {{ gender }}
+                  {% endif %}
+                </text>
+              </g>
+            </g>
+          {% else %}
+            <polygon
+              points="{{ x0s }},{{ yL0 }} {{ x1s }},{{ yR0 }} {{ x1s }},{{ yR1 }} {{ x0s }},{{ yL1 }}"
+              fill="{{ fill_color }}"
+              stroke="var(--row-stroke)"
+              stroke-width="2"
+              filter="url(#info-module-shadow)"
+            />
+
+            {# 左侧 6px 判定条：全行四边形的左边 x0s/yL0-yL1 #}
+            {% set bar_w = 6 %}
+            {% set xBarR = [x0s + bar_w, x1s - 1] | min %}
+            {% set yTopBarR = yL0 + (xBarR - x0s) / (x1s - x0s) * (yR0 - yL0) %}
+            {% set yBotBarR = yL1 + (xBarR - x0s) / (x1s - x0s) * (yR1 - yL1) %}
+            <polygon
+              points="{{ x0s }},{{ yL0 }} {{ xBarR }},{{ yTopBarR }} {{ xBarR }},{{ yBotBarR }} {{ x0s }},{{ yL1 }}"
+              fill="{{ bar_S }}"
+              stroke="none"
+              filter="url(#info-module-shadow)"
+            />
+
+            {# 单列文字：沿该行四边形的上下斜边做 y-shift 剪切，并用 clipPath 裁剪 #}
+            {% set wS = x1s - x0s %}
+            {% set hS = yL1 - yL0 %}
+            {# 单列是平行四边形：顶边/底边斜率理论相等；取平均能减少插值浮点误差导致的视觉偏差 #}
+            {% set kS = ((yR0 - yL0) + (yR1 - yL1)) / (2 * wS) %}
+            <clipPath id="clip-{{ i }}-S" clipPathUnits="userSpaceOnUse">
+              <polygon
+                points="{{ x0s }},{{ yL0 }} {{ x1s }},{{ yR0 }} {{ x1s }},{{ yR1 }} {{ x0s }},{{ yL1 }}"
+              />
+            </clipPath>
+            <g clip-path="url(#clip-{{ i }}-S)">
+              <g transform="matrix(1 {{ kS }} 0 1 {{ x0s }} {{ yL0 }})">
+                {# 左：提示行标题；右：提示内容（与上一版位置对调） #}
+                <text
+                  font-size="{% if i == 6 %}17{% elif i == 3 or i == 4 or i == 5 %}15{% else %}20{% endif %}"
+                  fill="var(--label-text-color)"
+                  text-anchor="start"
+                  dominant-baseline="middle"
+                  x="{% if i == 3 or i == 4 or i == 5 %}10{% else %}{{ bar_w + 10 }}{% endif %}"
+                  y="{% if i == 3 or i == 4 or i == 5 %}{{ hS * 0.83 }}{% else %}{{ hS / 2 }}{% endif %}"
+                >
+                  {% if i == 3 %}
+                    出身地
+                  {% elif i == 4 %}
+                    势力
+                  {% elif i == 5 %}
+                    标签
+                  {% else %}
+                    {% if _reveal %}正确答案{% else %}剩余猜测次数{% endif %}
+                  {% endif %}
+                </text>
+                {% if i == 4 or i == 5 %}
+                  {# 势力/标签：左对齐；每项单独绿色底（宽度按字数近似估算） #}
+                  {% if i == 4 %}
+                    {% if parent_faction != '无' and faction != '无' %}
+                      {% set content_parts = [parent_faction, faction] %}
+                    {% elif parent_faction != '无' %}
+                      {% set content_parts = [parent_faction] %}
+                    {% elif faction != '无' %}
+                      {% set content_parts = [faction] %}
+                    {% else %}
+                      {% set content_parts = ['无'] %}
+                    {% endif %}
+                  {% else %}
+                    {% set content_parts = tags if tags and tags|length > 0 else ['无'] %}
+                  {% endif %}
+                  {# 与「出身地」行同左缘（x=10）；chip 内文字在各自底框内水平居中 #}
+                  {# 宽度：拉丁与 CJK 混排分别估宽，避免纯英文势力名 chip 过宽、两侧空边过大 #}
+                  {% set ns = namespace(cx=10) %}
+                  {% set y_val = hS * 0.31 %}
+                  {% set chip_font_size = 15 %}
+                  {% set chip_height = 18 %}
+                  {% for part in content_parts %}
+                    {# 势力：上级/下级分别对应 parent_match、faction_match；无势力数据时全灰；公布答案时全绿 #}
+                    {# 标签：在 matched_tags 内为命中；公布答案时全绿；「无」为灰 #}
+                    {% if i == 4 %}
+                      {% if _reveal %}
+                        {% set chip_hit = true %}
+                      {% elif _fstat == 'neutral' %}
+                        {% set chip_hit = false %}
+                      {% elif content_parts | length >= 2 %}
+                        {% if loop.index0 == 0 %}
+                          {% set chip_hit = _fc.parent_match | default(false) %}
+                        {% else %}
+                          {% set chip_hit = _fc.faction_match | default(false) %}
+                        {% endif %}
+                      {% else %}
+                        {% if part == parent_faction %}
+                          {% set chip_hit = _fc.parent_match | default(false) %}
+                        {% else %}
+                          {% set chip_hit = _fc.faction_match | default(false) %}
+                        {% endif %}
+                      {% endif %}
+                    {% else %}
+                      {% if _reveal %}
+                        {% set chip_hit = true %}
+                      {% elif part == '无' %}
+                        {% set chip_hit = false %}
+                      {% else %}
+                        {% set _mtags = _tcmp.matched_tags | default([]) %}
+                        {% set chip_hit = part in _mtags %}
+                      {% endif %}
+                    {% endif %}
+                    {% set chip_w = part | svg_chip_width %}
+                    <rect
+                      x="{{ ns.cx }}"
+                      y="{{ y_val - chip_height / 2 }}"
+                      width="{{ chip_w }}"
+                      height="{{ chip_height }}"
+                      fill="{% if chip_hit %}var(--chip-fill){% else %}var(--chip-fill-unmatched){% endif %}"
+                      stroke="{% if chip_hit %}var(--chip-stroke){% else %}var(--chip-stroke-unmatched){% endif %}"
+                      stroke-width="1"
+                    />
+                    <text
+                      font-size="{{ chip_font_size }}"
+                      fill="{% if chip_hit %}var(--chip-text){% else %}var(--chip-text-unmatched){% endif %}"
+                      text-anchor="middle"
+                      dominant-baseline="middle"
+                      x="{{ ns.cx + chip_w / 2 }}"
+                      y="{{ y_val }}"
+                    >
+                      {{ part }}
+                    </text>
+                    {% set ns.cx = ns.cx + chip_w + 4 %}
+                  {% endfor %}
+                {% elif i == 3 %}
+                  {# 出身地 + 内容：与前三行左列一致（上 2/3 大字号内容，下 1/3 小字号标题已在上方 text） #}
+                  <text
+                    font-size="20"
+                    fill="var(--text-color)"
+                    text-anchor="start"
+                    dominant-baseline="middle"
+                    x="10"
+                    y="{{ hS * 0.33 }}"
+                  >
+                    {{ origin }}
+                  </text>
+                {% else %}
+                  {# 公布答案：不显示「答案公布」/次数；猜题中仍显示剩余次数 #}
+                  {% if not _reveal %}
+                  <text
+                    font-size="20"
+                    fill="var(--text-color)"
+                    text-anchor="middle"
+                    dominant-baseline="middle"
+                    x="{{ wS * 0.75 }}"
+                    y="{{ hS / 2 }}"
+                  >
+                    {{ attempts_left }}次
+                  </text>
+                  {% endif %}
+                {% endif %}
+              </g>
+            </g>
+          {% endif %}
+        {% endfor %}
+
+        {# 左侧代号栏：渐变底在栏内；左上/右下 L 在栏外紧贴，左上整段红、右下整段黑 #}
+        {% set _bar_name = name_bar_operator_name | default(operator_name | default('', true), true) %}
+        {% if _bar_name %}
+          {% set name_bar_h = 44 %}
+          {% set name_pad_lr = 20 %}
+          {% set name_fs = 20 %}
+          {% set name_est_w = _bar_name | length * name_fs + name_pad_lr * 2 %}
+          {% set name_bar_w = [name_est_w, x0 - 4] | min %}
+          {% set name_bar_w = [name_bar_w, name_pad_lr * 2 + name_fs] | max %}
+          {% set name_bar_x = (x0 - name_bar_w) / 2 %}
+          {% set name_bar_y = y_lb - name_bar_h %}
+          {% set L_t = 10 %}
+          {% set L_arm = [40, name_bar_w, name_bar_h] | min %}
+          {% set L_arm = [L_arm, L_t + 4] | max %}
+          {% set L_vert_shift = 10 %}
+          <g>
+            {# 左上 L：竖条相对原位置整体上移 L_vert_shift；横条不动 #}
+            <rect
+              x="{{ name_bar_x - L_t }}"
+              y="{{ name_bar_y - L_vert_shift }}"
+              width="{{ L_t }}"
+              height="{{ L_arm }}"
+              fill="var(--name-l-red)"
+            />
+            <rect
+              x="{{ name_bar_x - 1 }}"
+              y="{{ name_bar_y - L_t }}"
+              width="{{ L_arm }}"
+              height="{{ L_t }}"
+              fill="var(--name-l-red)"
+            />
+            {# 右下 L：竖条相对原位置整体下移 L_vert_shift；横条不动 #}
+            <rect
+              x="{{ name_bar_x + name_bar_w }}"
+              y="{{ name_bar_y + name_bar_h - L_arm + L_vert_shift }}"
+              width="{{ L_t }}"
+              height="{{ L_arm }}"
+              fill="var(--name-l-black)"
+            />
+            <rect
+              x="{{ name_bar_x + name_bar_w - L_arm + 1 }}"
+              y="{{ name_bar_y + name_bar_h }}"
+              width="{{ L_arm }}"
+              height="{{ L_t }}"
+              fill="var(--name-l-black)"
+            />
+            <rect
+              x="{{ name_bar_x }}"
+              y="{{ name_bar_y }}"
+              width="{{ name_bar_w }}"
+              height="{{ name_bar_h }}"
+              fill="url(#name-bar-fade)"
+            />
+            <text
+              font-size="{{ name_fs }}"
+              fill="var(--text-color)"
+              text-anchor="middle"
+              dominant-baseline="middle"
+              x="{{ name_bar_x + name_bar_w / 2 }}"
+              y="{{ name_bar_y + name_bar_h / 2 }}"
+            >
+              {{ _bar_name }}
+            </text>
+          </g>
+        {% endif %}
+      </svg>
+    </div>
+  </body>
+</html>

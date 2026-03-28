@@ -1,0 +1,135 @@
+/* new_theme.css
+ * 540x540 面板样式与 new_base.html 中 SVG 使用的 CSS 变量。
+ * 由 new_base.html 通过 <link> 引入；渲染时请传入 new_theme_css_uri（file:// 绝对路径），
+ * 以便 html_to_pic / Playwright set_content 能加载外部样式表。
+ *
+ * 字体：由 new_base.html 内联 @font-face（panel_font_ttf_uri 绝对 file://），避免 setContent 下相对 url 失效。
+ */
+
+:root {
+  --panel-w: 540px;
+  --panel-h: 540px;
+
+  /*
+   * 精二整身立绘（new_base.html）：
+   * - 外层 scale(540/512)；有 char_e2_head_align.csv 且渲染传入 char_e2_inner_transform 时，
+   *   内层为 translate(128,128) scale(var(--char-e2-head-zoom)) translate(-vx,-vy)（数值由 Python 计算）。
+   * - 头部锚到面板左上象限中心：面板 540 四分后左上块 [0,270]×[0,270]，中心 (135,135)；
+   *   对应 512 视口内目标 T = 512/4 = 128（与 --panel-w/4 * 512/540 一致）。
+   *
+   * char_e2_head_align.csv：update_simple 生成；须由 Python 读表并传入 char_e2_inner_transform。
+   *
+   * 本地 char_arts 与 resource_tools/update_simple 写入的 DATA_DIR/char_arts/{char_id}_2.png 一致；
+   * 须由渲染侧显式传入 URI 才会用本地文件：
+   *   - char_operator_id：CSV 的 id 列（如 char_4123_ela）；
+   *   - char_arts_base_uri：char_arts 目录的绝对 file URI（无末尾 /），或
+   *   - html_asset_base_uri：DATA_DIR 根目录的绝对 file URI，模板拼 char_arts_rel_dir（默认 char_arts）/{id}_2.png 并注入 <base>。
+   * 若上述本地 URI 未传、仅 char_operator_id，则 href 为 torappu CDN（非本地）。
+   * SVG <image href> 不使用本变量，仅作文档约定；子目录名与模板 char_arts_rel_dir 默认一致。
+   */
+  --char-art-prts-viewport-px: 512;
+  --char-art-panel-px: 540;
+  /* 与 game_tools.char_art_layout.CHAR_E2_HEAD_ZOOM 一致；SVG transform 由渲染层写入，此处仅作文档 */
+  --char-e2-head-zoom: 2.5;
+  /* 与模板 char_arts_rel_dir 默认一致（仅文档/主题参考，href 由 Jinja 拼接） */
+  --char-arts-rel-dir-name: char_arts;
+
+  --bg-panel: #ffffff;
+  --bg-right: rgba(255, 255, 255, 0.04);
+
+  /* new_base.html SVG：外框、行块、判定条、文字与标签 chip */
+  --panel-outline-fill: rgba(255, 255, 255, 0.04);
+  --panel-outline-stroke: rgba(255, 255, 255, 0.14);
+  --row-fill: rgba(255, 255, 255, 1);
+  --row-stroke: rgba(255, 255, 255, 0.28);
+
+  --bar-fill: rgba(34, 197, 94, 0.92);
+  /* 左侧判定条状态色（与游戏内比对逻辑一致） */
+  --bar-fill-match: rgba(34, 197, 94, 0.92);
+  --bar-fill-mismatch: rgba(239, 68, 68, 0.92);
+  --bar-fill-rarity-higher: rgba(59, 130, 246, 0.92);
+  --bar-fill-rarity-lower: rgba(239, 68, 68, 0.92);
+  --bar-fill-rarity-same: rgba(34, 197, 94, 0.92);
+  --bar-fill-warning: rgba(245, 158, 11, 0.92);
+  --bar-fill-neutral: rgba(148, 163, 184, 0.82);
+
+  --text-color: rgba(0, 0, 0, 0.92);
+  /* 字段名（职业、星级等）；内容仍用 --text-color / --chip-text */
+  --label-text-color: rgba(88, 88, 92, 0.92);
+
+  /* 势力/标签 chip：命中为绿底白字；未命中为灰底白字 */
+  --chip-fill: var(--bar-fill);
+  --chip-stroke: rgba(21, 128, 61, 0.95);
+  --chip-text: rgba(255, 255, 255, 0.95);
+  --chip-fill-unmatched: rgba(107, 114, 128, 0.92);
+  --chip-stroke-unmatched: rgba(75, 85, 99, 0.95);
+  --chip-text-unmatched: rgba(255, 255, 255, 0.95);
+
+  /* 左侧代号栏外 L：左上整段红、右下整段黑（两臂同色） */
+  --name-l-red: #dc2626;
+  --name-l-black: #0a0a0a;
+
+  /* 旧类名行交替色（.slant-row，当前 new_base 未使用） */
+  --row-fill-a: rgba(99, 102, 241, 0.22);
+  --row-fill-b: rgba(34, 211, 238, 0.16);
+
+  /* 面板正文：HarmonyOS Sans Medium（见 new_base.html 内联 @font-face）；失败时回退雅黑 */
+  --panel-font-family: "HarmonyOS Sans Medium", "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: var(--panel-font-family);
+}
+
+.ark-panel {
+  width: var(--panel-w);
+  height: var(--panel-h);
+  background: var(--bg-panel);
+  border-radius: 24px;
+  overflow: hidden;
+  position: relative;
+}
+
+.ark-panel__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* SVG <text> 默认带内联 font-family 会覆盖样式；已在模板中去掉，统一由此处指定 */
+.ark-panel__svg text {
+  font-family: var(--panel-font-family);
+}
+
+.right-box-outline {
+  fill: var(--bg-right);
+  stroke: var(--panel-outline-stroke);
+  stroke-width: 2;
+}
+
+.slant-row {
+  stroke: var(--row-stroke);
+  stroke-width: 2;
+}
+
+.slant-row.row-0,
+.slant-row.row-2,
+.slant-row.row-4,
+.slant-row.row-6 {
+  fill: var(--row-fill-a);
+}
+
+.slant-row.row-1,
+.slant-row.row-3,
+.slant-row.row-5 {
+  fill: var(--row-fill-b);
+}
