@@ -1,0 +1,15 @@
+nonebot2>=2.4.2
+nonebot-plugin-alconna>=0.59.3
+nonebot-plugin-uninfo>=0.9.0
+nonebot-plugin-htmlrender>=0.6.6
+nonebot-plugin-localstore>=0.7.4
+arclet-alconna>=0.59.3
+jinja2>=3.0
+pypinyin>=0.55.0
+pydantic>=1.10
+httpx>=0.24.0
+Pillow>=9.0.0
+
+# 可选：执行「更新」且需要六星精二大头对齐（char_e2_head_align.csv）时安装
+# opencv-python-headless>=4.5.0
+# numpy>=1.20.0
