@@ -6,7 +6,7 @@
 from .game_tools import *
 
 # 插件元数据
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "lizhiqi233-rgb"
 __description__ = "明日方舟猜干员游戏 - 支持多种游戏模式和题库设置"
 

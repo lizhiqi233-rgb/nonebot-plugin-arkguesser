@@ -2,7 +2,7 @@
 
 基于 [NoneBot2](https://nonebot.dev/) 的《明日方舟》猜干员小游戏插件，支持题库星级范围、大头模式、连战模式与资源更新等。
 
-**当前版本：v1.0.2**
+**当前版本：v1.0.3**
 
 - 仓库：<https://github.com/lizhiqi233-rgb/nonebot-plugin-arkguesser>
 - PyPI 包名：`nonebot-plugin-arkguesser`

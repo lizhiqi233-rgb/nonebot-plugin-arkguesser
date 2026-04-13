@@ -8,8 +8,13 @@ from pathlib import Path
 # 须与 resources/templates/new_theme.css 中 --char-art-* 一致
 CHAR_ART_PRTS_VIEWPORT_PX = 512.0
 CHAR_ART_PANEL_PX = 540.0
-# 与 new_theme.css --char-e2-head-zoom 一致：相对 slice 后再放大倍数
+# 旧版固定 2.5；现改为按绿框在 slice 后视口内跨度动态计算，仅作文档/兼容参照
 CHAR_E2_HEAD_ZOOM = 2.5
+# 希望绿框在 512 视口里呈现的目标特征跨度（px）；zoom ≈ TARGET / max(rw*slice, rh*slice)
+# 略小则整体放大倍率降低，头肩与背景留出更多（曾用 280 偏「怼脸」）
+CHAR_E2_HEAD_TARGET_VP_SPAN = 100.0
+CHAR_E2_HEAD_ZOOM_MIN = 1.6
+CHAR_E2_HEAD_ZOOM_MAX = 12.0
 
 
 def svg_chip_width_px(
@@ -79,8 +84,29 @@ def _parse_align_float(row: dict[str, str], key: str) -> float | None:
         return None
 
 
+def _png_pixel_size(path: Path) -> tuple[int, int] | None:
+    """读取 PNG IHDR 宽高，避免依赖 Pillow；非 PNG 或损坏时返回 None。"""
+    try:
+        with path.open("rb") as f:
+            sig = f.read(8)
+            if sig != b"\x89PNG\r\n\x1a\n":
+                return None
+            length = int.from_bytes(f.read(4), "big")
+            ctype = f.read(4)
+            if ctype != b"IHDR" or length < 8:
+                return None
+            data = f.read(length)
+            w = int.from_bytes(data[0:4], "big")
+            h = int.from_bytes(data[4:8], "big")
+            if w <= 0 or h <= 0:
+                return None
+            return (w, h)
+    except OSError:
+        return None
+
+
 def load_e2_head_align_row(align_csv: Path, char_id: str) -> dict[str, str] | None:
-    """读取 char_e2_head_align.csv 中 status=ok 且 char_id 匹配的一行。"""
+    """读取 char_e2_head_align.csv 中 char_id 匹配的首行（表中仅存成功对齐记录）。"""
     if not align_csv.is_file():
         return None
     cid = (char_id or "").strip()
@@ -90,8 +116,6 @@ def load_e2_head_align_row(align_csv: Path, char_id: str) -> dict[str, str] | No
         with align_csv.open("r", encoding="utf-8-sig", newline="") as f:
             for row in csv.DictReader(f):
                 if (row.get("char_id") or "").strip() != cid:
-                    continue
-                if (row.get("status") or "").strip() != "ok":
                     continue
                 return dict(row)
     except OSError:
@@ -106,9 +130,9 @@ def char_e2_head_inner_svg_transform(
     art_h: float,
     slice_scale: float,
     *,
+    zoom: float,
     panel_px: float = CHAR_ART_PANEL_PX,
     vp_px: float = CHAR_ART_PRTS_VIEWPORT_PX,
-    zoom: float = CHAR_E2_HEAD_ZOOM,
 ) -> str:
     """
     512 逻辑视口内、在 ``scale(panel/vp)`` 之前应用的 ``<g transform>`` 字符串。
@@ -116,6 +140,9 @@ def char_e2_head_inner_svg_transform(
     假定 <image> 为 width=height=vp_px 且 preserveAspectRatio=xMidYMid slice；
     将立绘中 (head_cx, head_cy) 先映射到视口坐标 (vx,vy)，再 ``translate(T) scale(zoom) translate(-vx,-vy)``
     使头部落在「面板左上象限中心」在视口内的对应点 T = (panel/4)*(vp/panel) = vp/4。
+
+    ``zoom`` 须由调用方按绿框 ``refine_w/h`` 与 ``slice_scale`` 计算：全身立绘 slice 后绿框在视口里往往很小，
+    固定 2.5 会导致脸过小；动态 zoom ≈ TARGET_VP_SPAN / max(rw*slice, rh*slice)。
     """
     if art_w <= 0 or art_h <= 0 or slice_scale <= 0 or zoom <= 0:
         return ""
@@ -131,27 +158,61 @@ def char_e2_head_inner_svg_transform(
     )
 
 
-def char_e2_inner_transform_from_row(row: dict[str, str]) -> str | None:
-    """从 char_e2_head_align.csv 一行生成内层 transform；字段不全则返回 None。"""
-    head_cx = _parse_align_float(row, "head_cx")
-    head_cy = _parse_align_float(row, "head_cy")
-    art_w = _parse_align_float(row, "art_w")
-    art_h = _parse_align_float(row, "art_h")
-    slice_s = _parse_align_float(row, "slice_scale_512")
-    if None in (head_cx, head_cy, art_w, art_h, slice_s):
+def char_e2_inner_transform_from_row(
+    row: dict[str, str],
+    *,
+    data_root: Path,
+    char_id: str,
+    elite_level: int = 2,
+) -> str | None:
+    """
+    从 char_e2_head_align.csv 一行生成内层 transform。
+
+    依赖 ``refine_x/y/w/h``（绿框）与本地 ``char_arts/{char_id}_{elite}.png`` 的像素尺寸。
+    缩放：绿框在 slice 后的视口跨度 max(rw,rh)*slice_scale 小时自动提高 ``zoom``，
+    使脸部在左半幅占比稳定；CSV 中 ``scale`` 与几何一致时可作校验，渲染以绿框边长为准。
+    """
+    art_path = data_root / "char_arts" / f"{char_id}_{int(elite_level)}.png"
+    wh = _png_pixel_size(art_path)
+    if wh is None:
         return None
+
+    rw = _parse_align_float(row, "refine_w")
+    if rw is None or rw <= 0:
+        return None
+    rx = _parse_align_float(row, "refine_x")
+    ry = _parse_align_float(row, "refine_y")
+    rh = _parse_align_float(row, "refine_h")
+    if None in (rx, ry, rh) or rh <= 0:
+        return None
+
+    art_w, art_h = float(wh[0]), float(wh[1])
+    head_cx = rx + rw / 2.0
+    head_cy = ry + rh / 2.0
+    slice_s = max(CHAR_ART_PRTS_VIEWPORT_PX / art_w, CHAR_ART_PRTS_VIEWPORT_PX / art_h)
+    # 与 vx 公式一致：立绘内一段长度 L 映射到 512 用户空间约为 L * slice_s
+    head_w_vp = rw * slice_s
+    head_h_vp = rh * slice_s
+    head_span_vp = max(head_w_vp, head_h_vp)
+    zoom = CHAR_E2_HEAD_TARGET_VP_SPAN / max(head_span_vp, 1.0)
+    zoom = min(max(zoom, CHAR_E2_HEAD_ZOOM_MIN), CHAR_E2_HEAD_ZOOM_MAX)
     s = char_e2_head_inner_svg_transform(
-        head_cx, head_cy, art_w, art_h, slice_s
+        head_cx, head_cy, art_w, art_h, slice_s, zoom=zoom
     )
     return s or None
 
 
 def resolve_char_e2_inner_transform(char_id: str, data_dirs: tuple[Path, ...]) -> str:
     """在多个数据根目录下查找 char_e2_head_align.csv，返回内层 transform 或空串。"""
+    cid = (char_id or "").strip()
+    if not cid:
+        return ""
     for root in data_dirs:
-        row = load_e2_head_align_row(root / "char_e2_head_align.csv", char_id)
+        row = load_e2_head_align_row(root / "char_e2_head_align.csv", cid)
         if row:
-            t = char_e2_inner_transform_from_row(row)
+            t = char_e2_inner_transform_from_row(
+                row, data_root=root, char_id=cid, elite_level=2
+            )
             if t:
                 return t
     return ""

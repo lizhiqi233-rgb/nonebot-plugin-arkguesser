@@ -12,12 +12,12 @@
 
   /*
    * 精二整身立绘（new_base.html）：
-   * - 外层 scale(540/512)；有 char_e2_head_align.csv 且渲染传入 char_e2_inner_transform 时，
-   *   内层为 translate(128,128) scale(var(--char-e2-head-zoom)) translate(-vx,-vy)（数值由 Python 计算）。
+   * - 外层 scale(540/512)；有 char_e2_head_align.csv（绿框 refine_*）且传入 char_e2_inner_transform 时，
+   *   内层为 translate(128,128) scale(zoom) translate(-vx,-vy)；zoom 由 Python 按 CSV 绿框与 slice 动态算，非固定值。
    * - 头部锚到面板左上象限中心：面板 540 四分后左上块 [0,270]×[0,270]，中心 (135,135)；
    *   对应 512 视口内目标 T = 512/4 = 128（与 --panel-w/4 * 512/540 一致）。
    *
-   * char_e2_head_align.csv：resource_tools/data_update 串联 char_art_match 生成；须由 Python 读表并传入 char_e2_inner_transform。
+   * char_e2_head_align.csv：data_update 生成（含 refine 矩形与相对头像的 scale 列）；Python 读 refine_* 与本地立绘尺寸算 transform。
    *
    * 本地 char_arts 与插件数据目录下 char_arts/{char_id}_2.png（由 data_update → char_art_update 下载）一致；
    * 须由渲染侧显式传入 URI 才会用本地文件：
@@ -29,7 +29,7 @@
    */
   --char-art-prts-viewport-px: 512;
   --char-art-panel-px: 540;
-  /* 与 game_tools.char_art_layout.CHAR_E2_HEAD_ZOOM 一致；SVG transform 由渲染层写入，此处仅作文档 */
+  /* 文档用旧默认值；实际 zoom 见 char_art_layout.CHAR_E2_HEAD_TARGET_VP_SPAN 动态计算 */
   --char-e2-head-zoom: 2.5;
   /* 与模板 char_arts_rel_dir 默认一致（仅文档/主题参考，href 由 Jinja 拼接） */
   --char-arts-rel-dir-name: char_arts;

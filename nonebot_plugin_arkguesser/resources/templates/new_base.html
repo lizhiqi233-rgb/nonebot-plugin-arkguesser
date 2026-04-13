@@ -126,8 +126,8 @@
         {% endif %}
 
         {#
-          左侧整身立绘：渲染层传入 char_e2_inner_transform。
-          - 六星：有 char_e2_head_align.csv 时头部锚到左上象限；无 CSV 则仅 scale(540/512) 全幅居中。
+          左侧整身立绘：渲染层传入 char_e2_inner_transform（由 char_art_layout 根据 CSV 绿框 refine_* 与本地 char_arts 尺寸计算）。
+          - 六星：有 char_e2_head_align.csv（refine_x/y/w/h）时头部锚到左上象限；无表或缺字段则仅 scale(540/512) 全幅居中。
           - 非六星（含 1～3 星精一立绘）：左侧半区居中（translate(-vp/4,0)）。
         #}
         {% if final_char_art_e2_url %}

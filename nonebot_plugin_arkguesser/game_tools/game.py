@@ -1,3 +1,4 @@
+import json
 import secrets
 import csv
 import difflib
@@ -13,6 +14,9 @@ from .config import get_plugin_config
 from .pool_manager import pool_manager
 from .mode_manager import mode_manager
 import re
+
+RECENT_DRAWN_FILENAME = "recent_drawn.json"
+
 
 class OperatorGuesser:
     def __init__(self):
@@ -39,6 +43,71 @@ class OperatorGuesser:
             self.pinyin_operators = [''.join(lazy_pinyin(operator)) for operator in self.operator_names]  # 预加载干员名称拼音列表
             self.alias_to_operator = self._load_aliases()
             self._data_available = True
+
+        self._load_recent_drawn()
+
+    def _load_recent_drawn(self) -> None:
+        """从 JSON 恢复「最近已出干员」记录，重启后不丢失。"""
+        path = self.data_path / RECENT_DRAWN_FILENAME
+        if not path.exists():
+            self.recent_drawn = {}
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+        except Exception as e:
+            logger.warning("[arkguesser] 读取 {} 失败: {}", RECENT_DRAWN_FILENAME, e)
+            self.recent_drawn = {}
+            return
+        if not isinstance(raw, dict):
+            self.recent_drawn = {}
+            return
+        out: dict[str, list[str]] = {}
+        for k, v in raw.items():
+            if not isinstance(k, str) or not k.strip():
+                continue
+            if not isinstance(v, list):
+                continue
+            out[k] = [x.strip() for x in v if isinstance(x, str) and x.strip()]
+        self.recent_drawn = out
+        if self._apply_recent_drawn_sanitize():
+            self._save_recent_drawn()
+
+    def _save_recent_drawn(self) -> None:
+        path = self.data_path / RECENT_DRAWN_FILENAME
+        try:
+            self.data_path.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.recent_drawn, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning("[arkguesser] 写入 {} 失败: {}", RECENT_DRAWN_FILENAME, e)
+
+    def _apply_recent_drawn_sanitize(self) -> bool:
+        """
+        按当前题库干员名与 recent_exclude_count 裁剪/清理内存中的记录。
+        若数据有变化返回 True。
+        """
+        n = get_plugin_config().recent_exclude_count
+        valid = set(self.operator_names) if self.operator_names else set()
+        new_map: dict[str, list[str]] = {}
+        changed = False
+        for k, names in list(self.recent_drawn.items()):
+            if not isinstance(names, list):
+                changed = True
+                continue
+            if n <= 0:
+                if names:
+                    changed = True
+                continue
+            filtered = [x for x in names if x in valid][:n]
+            if filtered:
+                new_map[k] = filtered
+            if names != filtered:
+                changed = True
+        if new_map != self.recent_drawn:
+            self.recent_drawn = new_map
+            changed = True
+        return changed
 
     def _load_aliases(self) -> dict[str, str]:
         """
@@ -217,6 +286,7 @@ class OperatorGuesser:
         # 新建列表，避免对 dict 内 list 原地 insert 再 slice 时与其它引用纠缠
         prev = self.recent_drawn.get(context_key, [])
         self.recent_drawn[context_key] = [operator_name] + prev[: max_count - 1]
+        self._save_recent_drawn()
 
     def is_data_available(self) -> bool:
         """检查数据是否可用"""
@@ -234,6 +304,8 @@ class OperatorGuesser:
                 self.alias_to_operator = self._load_aliases()
                 self._data_available = True
                 print("✅ 数据重新加载成功")
+                if self._apply_recent_drawn_sanitize():
+                    self._save_recent_drawn()
                 return True
             else:
                 # 数据文件仍然缺失
@@ -243,10 +315,14 @@ class OperatorGuesser:
                 self.alias_to_operator = {}
                 self._data_available = False
                 print("❌ 数据文件仍然缺失")
+                if self._apply_recent_drawn_sanitize():
+                    self._save_recent_drawn()
                 return False
         except Exception as e:
             print(f"❌ 重新加载数据失败: {e}")
             self._data_available = False
+            if self._apply_recent_drawn_sanitize():
+                self._save_recent_drawn()
             return False
 
     def get_game(self, uninfo: Uninfo) -> dict[str, Any] | None:
@@ -287,8 +363,12 @@ class OperatorGuesser:
 
         # 最近已出干员排除：保证最近 N 名不重复（列表顺序：下标 0 为最近一次开局抽中的干员）
         exclude_count = get_plugin_config().recent_exclude_count
-        recent_ordered: list[str] = list(self.recent_drawn.get(recent_context_key, []))
-        recent_names = set(recent_ordered)
+        if exclude_count <= 0:
+            recent_ordered: list[str] = []
+            recent_names: set[str] = set()
+        else:
+            recent_ordered = list(self.recent_drawn.get(recent_context_key, []))
+            recent_names = set(recent_ordered)
         pool_for_draw = [o for o in available_operators if o["name"] not in recent_names]
         used_full_pool_fallback = False
         if not pool_for_draw:

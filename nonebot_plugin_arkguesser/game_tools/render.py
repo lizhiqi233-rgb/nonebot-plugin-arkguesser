@@ -52,6 +52,20 @@ def _new_theme_css_uri() -> str:
     return (_TEMPLATES_DIR / "new_theme.css").resolve().as_uri()
 
 
+def _plugin_data_dir() -> Path:
+    """
+    与 ``resource_tools.data_update`` 写入 characters / char_e2_head_align / char_arts 的根目录一致。
+    更新流程若因权限将 ``DATA_DIR`` 回退到 ``~/.arkguesser/data``，此处须读同一全局变量，
+    而不能仅用 ``store.get_plugin_data_dir()``，否则面板无法命中对齐表与本地立绘。
+    """
+    try:
+        from ..resource_tools import data_update as du
+
+        return Path(du.DATA_DIR).resolve()
+    except Exception:
+        return store.get_plugin_data_dir().resolve()
+
+
 def _char_art_elite_level(rarity: int) -> int:
     """整身 char_arts：4 星及以上用精二 _2.png，3 星及以下用精一 _1.png（与 game._get_char_art_url 一致）。"""
     return 1 if int(rarity or 0) < 4 else 2
@@ -62,7 +76,7 @@ def _char_arts_base_uri(char_id: str, rarity: int) -> str:
     cid = (char_id or "").strip()
     if not cid:
         return ""
-    root = store.get_plugin_data_dir()
+    root = _plugin_data_dir()
     d = (root / "char_arts").resolve()
     lvl = _char_art_elite_level(rarity)
     p = d / f"{cid}_{lvl}.png"
@@ -85,8 +99,9 @@ async def render_guess_result(
     char_id = (op.get("enName") or "").strip()
     rarity_i = int(op.get("rarity") or 0)
     arts_uri = _char_arts_base_uri(char_id, rarity_i)
+    # 六星精二：char_e2_head_align.csv 的绿框 refine_* 与本地 char_arts 立绘尺寸 → char_e2_inner_transform
     char_e2_tf = (
-        resolve_char_e2_inner_transform_for_rarity(char_id, rarity_i, (store.get_plugin_data_dir(),))
+        resolve_char_e2_inner_transform_for_rarity(char_id, rarity_i, (_plugin_data_dir(),))
         if char_id
         else ""
     )
@@ -138,8 +153,9 @@ async def render_correct_answer(operator: dict[str, Any], mode: str = "大头") 
     char_id = (operator.get("enName") or "").strip()
     rarity_i = int(operator.get("rarity") or 0)
     arts_uri = _char_arts_base_uri(char_id, rarity_i)
+    # 与 render_guess_result 相同：CSV 绿框 + 本地立绘尺寸
     char_e2_tf = (
-        resolve_char_e2_inner_transform_for_rarity(char_id, rarity_i, (store.get_plugin_data_dir(),))
+        resolve_char_e2_inner_transform_for_rarity(char_id, rarity_i, (_plugin_data_dir(),))
         if char_id
         else ""
     )
